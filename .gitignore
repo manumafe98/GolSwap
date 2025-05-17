@@ -1,6 +1,7 @@
 contracts/.env
-
 contracts/.vscode/*
+contracts/cache
+contracts/out
 
 frontend/.vscode/*
 frontend/node_modules
