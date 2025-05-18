@@ -21,4 +21,8 @@ contract GolTest is Test {
     function testTotalSupply() public view {
         assert(gol.totalSupply() == 100 ether);
     }
+
+    function testDecimals() public view {
+        assert(gol.decimals() == 18);
+    }
 }
