@@ -39,7 +39,7 @@ contract GolSwap {
             revert GolSwap__PoolAlreadyInitialized();
         }
 
-        if (msg.value < 0.01 ether || _golAmount < 50e18) {
+        if (msg.value < 0.01 ether || _golAmount < 10e18) {
             revert GolSwap__InvalidRatio();
         }
 
@@ -90,24 +90,24 @@ contract GolSwap {
         return s_totalLiquidity;
     }
 
-    function getProvidedLiquidity(address _address) external view returns (uint256) {
+    function getProvidedLiquidityByUser(address _address) external view returns (uint256) {
         return liquidity[_address];
     }
 
     function addLiquidity(uint256 _golAmount) external payable {
-        uint256 totalliquidity = s_totalLiquidity;
+        uint256 totalLiquidity = s_totalLiquidity;
 
-        if (totalliquidity == 0) {
+        if (totalLiquidity == 0) {
             revert GolSwap__LiquidityPoolNotInitialized();
         }
 
-        uint256 minimumEthAccepted = quoteLiquidity(_golAmount, TokenType.GOL);
-        if (msg.value < minimumEthAccepted) {
-            revert GolSwap__InsufficientEthProvided();
-        }
+        // uint256 minimumEthAccepted = quoteLiquidity(_golAmount, TokenType.GOL);
+        // if (minimumEthAccepted > msg.value) {
+        //     revert GolSwap__InsufficientEthProvided();
+        // }
 
         uint256 minimumGolAccepted = quoteLiquidity(msg.value, TokenType.ETH);
-        if (_golAmount < minimumGolAccepted) {
+        if (minimumGolAccepted > _golAmount) {
             revert GolSwap__InsufficientGolProvided();
         }
 
@@ -117,7 +117,7 @@ contract GolSwap {
         }
 
         (uint256 ethReserve,) = getReserves();
-        uint256 liquidityMinted = (msg.value * totalliquidity) / ethReserve;
+        uint256 liquidityMinted = (msg.value * totalLiquidity) / ethReserve;
         liquidity[msg.sender] += liquidityMinted;
         s_totalLiquidity += liquidityMinted;
     }

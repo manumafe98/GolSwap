@@ -14,15 +14,15 @@ contract GolTest is Test {
     }
 
     function testNameAndSymbol() public view {
-        assert(keccak256(bytes(gol.name())) == keccak256(bytes("GOL")));
-        assert(keccak256(bytes(gol.symbol())) == keccak256(bytes("GOL")));
+        assertEq(keccak256(bytes(gol.name())), keccak256(bytes("GOL")));
+        assertEq(keccak256(bytes(gol.symbol())), keccak256(bytes("GOL")));
     }
 
     function testTotalSupply() public view {
-        assert(gol.totalSupply() == 100 ether);
+        assertEq(gol.totalSupply(), 100 ether);
     }
 
     function testDecimals() public view {
-        assert(gol.decimals() == 18);
+        assertEq(gol.decimals(), 18);
     }
 }

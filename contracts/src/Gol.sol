@@ -16,4 +16,8 @@ contract Gol is ERC20 {
     function decimals() public pure override returns (uint8) {
         return DECIMALS;
     }
+
+    function mint(address _to, uint256 _amount) external {
+        _mint(_to, _amount);
+    }
 }
