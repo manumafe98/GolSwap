@@ -1,7 +1,3 @@
 export const GolSwap = () => {
-
-  return (
-    <>
-    </>
-  )
-}
+  return <></>;
+};
