@@ -31,6 +31,13 @@ contract GolSwapTest is Test {
 
         vm.deal(USER, STARTING_USER_BALANCE);
         golToken.mint(USER, 40 ether);
+
+        vm.deal(LIQUIDITY_ADDER, STARTING_USER_BALANCE);
+        golToken.mint(LIQUIDITY_ADDER, 20 ether);
+    }
+
+    function testGetOwner() public view {
+        assertEq(golSwap.getOwner(), address(this));
     }
 
     function testTotalLiquidityPreInitialization() public view {
@@ -45,7 +52,7 @@ contract GolSwapTest is Test {
         golSwap.init{value: 0.001 ether}(10 ether);
     }
 
-        function testRunInitWithInsufficientGol() public {
+    function testRunInitWithInsufficientGol() public {
         approveTokenAmount(USER, 9 ether);
 
         vm.prank(USER);
@@ -102,19 +109,103 @@ contract GolSwapTest is Test {
 
     function testAddLiquidity() public initLiquidityPool {
         uint256 previousTotalLiquidity = golSwap.getTotalLiquidity();
+        (uint256 ethReserveBefore,) = golSwap.getReserves();
 
-        approveTokenAmount(LIQUIDITY_ADDER, 10 ether);
-        vm.deal(LIQUIDITY_ADDER, STARTING_USER_BALANCE);
-        golToken.mint(LIQUIDITY_ADDER, 40 ether);
-
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
         vm.prank(LIQUIDITY_ADDER);
         golSwap.addLiquidity{value: 0.005 ether}(5 ether);
 
         uint256 currentTotalLiquidity = golSwap.getTotalLiquidity();
-        uint256 userProvidedLiquidity = golSwap.getProvidedLiquidityByUser(USER);
+        uint256 userProvidedLiquidity = golSwap.getProvidedLiquidityByUser(LIQUIDITY_ADDER);
+        uint256 expectedLiquidityMinted = (0.005 ether * previousTotalLiquidity) / ethReserveBefore;
 
-        assertEq(0.01 ether, userProvidedLiquidity);
+        assertEq(userProvidedLiquidity, expectedLiquidityMinted);
         assertGt(currentTotalLiquidity, previousTotalLiquidity);
+    }
+
+    function testAddLiquidityEmitsEvent() public initLiquidityPool {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectEmit();
+        emit LiquidityAdded(LIQUIDITY_ADDER, 0.005 ether, 5 ether);
+        golSwap.addLiquidity{value: 0.005 ether}(5 ether);
+    }
+
+    function testAddLiquidityWithoutInitializingThePool() public {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__LiquidityPoolNotInitialized.selector);
+        golSwap.addLiquidity{value: 0.005 ether}(5 ether);
+    }
+
+    function testAddLiquidityWith0GolSent() public initLiquidityPool {
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__InvalidAmount.selector);
+        golSwap.addLiquidity{value: 0.005 ether}(0 ether);
+    }
+
+    function testAddLiquidityWithWrongGolRatio() public initLiquidityPool {
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__InsufficientGolProvided.selector);
+        golSwap.addLiquidity{value: 5 ether}(1 ether);
+    }
+
+    function testAddLiquidityWithWrongEthRatio() public initLiquidityPool {
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__InsufficientEthProvided.selector);
+        golSwap.addLiquidity{value: 0.00001 ether}(10 ether);
+    }
+
+    function testReservesAfterInit() public initLiquidityPool {
+        (uint256 ethReserves, uint256 golReserves) = golSwap.getReserves();
+        assertEq(0.01 ether, ethReserves);
+        assertEq(10 ether, golReserves);
+    }
+
+    function testRemoveLiquidityWithoutInitializingThePool() public {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__LiquidityPoolNotInitialized.selector);
+        golSwap.removeLiquidity(5 ether);
+    }
+
+    function testRemoveLiquidity() public initLiquidityPool {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        golSwap.addLiquidity{value: 0.005 ether}(5 ether);
+
+        uint256 previousTotalLiquidity = golSwap.getTotalLiquidity();
+        uint previousLiquidityProvided = golSwap.getProvidedLiquidityByUser(LIQUIDITY_ADDER);
+
+        vm.prank(LIQUIDITY_ADDER);
+        golSwap.removeLiquidity(5 ether);
+
+        uint256 afterRemoveTotalLiquidity = golSwap.getTotalLiquidity();
+        uint256 afterRemoveLiquidityProvided = golSwap.getProvidedLiquidityByUser(LIQUIDITY_ADDER);
+
+        assertGt(previousTotalLiquidity, afterRemoveTotalLiquidity);
+        assertGt(previousLiquidityProvided, afterRemoveLiquidityProvided);
+    }
+
+    function testTryToRemoveMoreLiquidityThanProvided() public initLiquidityPool {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        golSwap.addLiquidity{value: 0.005 ether}(5 ether);
+
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectRevert(GolSwap.GolSwap__NotEnoughLiquidity.selector);
+        golSwap.removeLiquidity(10 ether);
+    }
+
+    function testRemoveLiquidityEmitsEvent() public initLiquidityPool {
+        approveTokenAmount(LIQUIDITY_ADDER, 5 ether);
+        vm.prank(LIQUIDITY_ADDER);
+        golSwap.addLiquidity{value: 0.005 ether}(5 ether);
+
+        vm.prank(LIQUIDITY_ADDER);
+        vm.expectEmit();
+        emit LiquidityRemoved(LIQUIDITY_ADDER, 5 ether);
+        golSwap.removeLiquidity(5 ether);
     }
 
     function approveTokenAmount(address _user, uint256 _golTokenAmount) private {

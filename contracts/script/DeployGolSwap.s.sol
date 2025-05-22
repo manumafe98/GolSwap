@@ -9,11 +9,11 @@ import {DeployGol} from "../script/DeployGol.s.sol";
 contract DeployGolSwap is Script {
     DeployGol golDeployer;
 
-    function run() public returns(GolSwap, Gol) {
+    function run() public returns (GolSwap, Gol) {
         golDeployer = new DeployGol();
         Gol golToken = golDeployer.run();
 
-        vm.startBroadcast();
+        vm.startBroadcast(msg.sender);
 
         GolSwap golSwap = new GolSwap(address(golToken));
 
