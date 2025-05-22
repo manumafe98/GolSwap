@@ -2,25 +2,25 @@
 pragma solidity ^0.8.30;
 
 import {Gol} from "./Gol.sol";
-import {console} from "forge-std/Test.sol";
 
 contract GolSwap {
     error GolSwap__PoolAlreadyInitialized();
     error GolSwap__TransferFailed();
     error GolSwap__InvalidRatio();
-    error GolSwap__InvalidAmount();
+    error GolSwap__InvalidLiquidityAmount();
     error GolSwap__UnsupportedTokenType();
     error GolSwap__InsufficientEthProvided();
     error GolSwap__InsufficientGolProvided();
     error GolSwap__LiquidityPoolNotInitialized();
     error GolSwap__NotEnoughLiquidity();
+    error GolSwap__InvalidSwapValue();
 
     enum TokenType {
         GOL,
         ETH
     }
 
-    Gol private gol;
+    Gol private immutable i_gol;
     address private immutable i_owner;
     uint256 private s_totalLiquidity;
 
@@ -30,8 +30,22 @@ contract GolSwap {
     event LiquidityAdded(address indexed provider, uint256 ethAmount, uint256 golAmount);
     event LiquidityRemoved(address indexed provider, uint256 amount);
 
+    modifier liquidityPoolNotInitialized() {
+        if (s_totalLiquidity == 0) {
+            revert GolSwap__LiquidityPoolNotInitialized();
+        }
+        _;
+    }
+
+    modifier invalidSwapValue(uint256 _amount) {
+        if (_amount == 0) {
+            revert GolSwap__InvalidSwapValue();
+        }
+        _;
+    }
+
     constructor(address _golAddress) {
-        gol = Gol(_golAddress);
+        i_gol = Gol(_golAddress);
         i_owner = msg.sender;
     }
 
@@ -47,18 +61,18 @@ contract GolSwap {
         s_totalLiquidity = address(this).balance;
         liquidity[msg.sender] = s_totalLiquidity;
 
-        bool success = gol.transferFrom(msg.sender, address(this), _golAmount);
+        bool success = i_gol.transferFrom(msg.sender, address(this), _golAmount);
 
         if (!success) {
             revert GolSwap__TransferFailed();
         }
     }
 
-    function ethToGol() external payable {
+    function ethToGol() external payable invalidSwapValue(msg.value) {
         (uint256 ethReserve, uint256 golReserve) = getReserves();
         uint256 golToSend = calculatePrice(msg.value, ethReserve - msg.value, golReserve);
 
-        bool success = gol.transfer(msg.sender, golToSend);
+        bool success = i_gol.transfer(msg.sender, golToSend);
         if (!success) {
             revert GolSwap__TransferFailed();
         }
@@ -66,11 +80,11 @@ contract GolSwap {
         emit Swap(msg.sender, msg.value, golToSend, true);
     }
 
-    function golToEth(uint256 _golAmount) external {
+    function golToEth(uint256 _golAmount) external invalidSwapValue(_golAmount) {
         (uint256 ethReserve, uint256 golReserve) = getReserves();
         uint256 ethToSend = calculatePrice(_golAmount, golReserve - _golAmount, ethReserve);
 
-        bool golSent = gol.transferFrom(msg.sender, address(this), _golAmount);
+        bool golSent = i_gol.transferFrom(msg.sender, address(this), _golAmount);
         if (!golSent) {
             revert GolSwap__TransferFailed();
         }
@@ -95,13 +109,7 @@ contract GolSwap {
         return liquidity[_address];
     }
 
-    function addLiquidity(uint256 _golAmount) external payable {
-        uint256 totalLiquidity = s_totalLiquidity;
-
-        if (totalLiquidity == 0) {
-            revert GolSwap__LiquidityPoolNotInitialized();
-        }
-
+    function addLiquidity(uint256 _golAmount) external payable liquidityPoolNotInitialized {
         (uint256 ethReserve, uint256 golReserve) = getReserves();
         ethReserve -= msg.value;
 
@@ -115,25 +123,19 @@ contract GolSwap {
             revert GolSwap__InsufficientGolProvided();
         }
 
-        bool success = gol.transferFrom(msg.sender, address(this), _golAmount);
+        bool success = i_gol.transferFrom(msg.sender, address(this), _golAmount);
         if (!success) {
             revert GolSwap__TransferFailed();
         }
 
-        uint256 liquidityMinted = (msg.value * totalLiquidity) / ethReserve;
+        uint256 liquidityMinted = (msg.value * s_totalLiquidity) / ethReserve;
         liquidity[msg.sender] += liquidityMinted;
         s_totalLiquidity += liquidityMinted;
 
         emit LiquidityAdded(msg.sender, msg.value, _golAmount);
     }
 
-    function removeLiquidity(uint256 _amount) external {
-        uint256 totalliquidity = s_totalLiquidity;
-
-        if (totalliquidity == 0) {
-            revert GolSwap__LiquidityPoolNotInitialized();
-        }
-        
+    function removeLiquidity(uint256 _amount) external liquidityPoolNotInitialized {
         (uint256 ethReserve, uint256 golReserve) = getReserves();
         uint256 ethProvided = quoteLiquidity(_amount, TokenType.GOL, ethReserve, golReserve);
 
@@ -144,7 +146,7 @@ contract GolSwap {
         liquidity[msg.sender] -= ethProvided;
         s_totalLiquidity -= ethProvided;
 
-        bool golSent = gol.transfer(msg.sender, _amount);
+        bool golSent = i_gol.transfer(msg.sender, _amount);
         if (!golSent) {
             revert GolSwap__TransferFailed();
         }
@@ -163,7 +165,7 @@ contract GolSwap {
         returns (uint256)
     {
         if (_tokenAmount == 0) {
-            revert GolSwap__InvalidAmount();
+            revert GolSwap__InvalidLiquidityAmount();
         }
 
         if (_tokenType == TokenType.ETH) {
@@ -177,7 +179,7 @@ contract GolSwap {
 
     function getReserves() public view returns (uint256, uint256) {
         uint256 ethReserve = address(this).balance;
-        uint256 golReserve = gol.balanceOf(address(this));
+        uint256 golReserve = i_gol.balanceOf(address(this));
 
         return (ethReserve, golReserve);
     }

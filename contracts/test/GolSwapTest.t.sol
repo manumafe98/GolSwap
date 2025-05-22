@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.30;
 
-import {Test, console} from "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {DeployGolSwap} from "../script/DeployGolSwap.s.sol";
 import {GolSwap} from "../src/GolSwap.sol";
 import {Gol} from "../src/Gol.sol";
@@ -85,6 +85,12 @@ contract GolSwapTest is Test {
         assertGt(currentGolBalance, previousGolBalance);
     }
 
+    function testEthToGolWithInvalidAmount() public initLiquidityPool {
+        vm.prank(USER);
+        vm.expectRevert(GolSwap.GolSwap__InvalidSwapValue.selector);
+        golSwap.ethToGol{value: 0 ether}();
+    }
+
     function testEthToGolSwapEmitsEvent() public initLiquidityPool {
         vm.prank(USER);
         vm.expectEmit();
@@ -105,6 +111,12 @@ contract GolSwapTest is Test {
 
         assertGt(currentEthBalance, previousEthBalance);
         assertGt(previousGolBalance, currentGolBalance);
+    }
+
+    function testGolToEthWithInvalidAmount() public initLiquidityPool {
+        vm.prank(USER);
+        vm.expectRevert(GolSwap.GolSwap__InvalidSwapValue.selector);
+        golSwap.golToEth(0 ether);
     }
 
     function testAddLiquidity() public initLiquidityPool {
@@ -140,7 +152,7 @@ contract GolSwapTest is Test {
 
     function testAddLiquidityWith0GolSent() public initLiquidityPool {
         vm.prank(LIQUIDITY_ADDER);
-        vm.expectRevert(GolSwap.GolSwap__InvalidAmount.selector);
+        vm.expectRevert(GolSwap.GolSwap__InvalidLiquidityAmount.selector);
         golSwap.addLiquidity{value: 0.005 ether}(0 ether);
     }
 
@@ -206,6 +218,21 @@ contract GolSwapTest is Test {
         vm.expectEmit();
         emit LiquidityRemoved(LIQUIDITY_ADDER, 5 ether);
         golSwap.removeLiquidity(5 ether);
+    }
+
+    function testUnsupportedTokenType() public {
+        vm.expectRevert(GolSwap.GolSwap__UnsupportedTokenType.selector);
+        (bool success, ) = address(golSwap).call(
+            abi.encodeWithSignature(
+                "quoteLiquidity(uint256,uint256,uint256,uint256)",
+                100,
+                2,
+                1 ether,
+                1000
+            )
+        );
+
+        assertFalse(success);
     }
 
     function approveTokenAmount(address _user, uint256 _golTokenAmount) private {
