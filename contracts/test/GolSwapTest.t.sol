@@ -187,7 +187,7 @@ contract GolSwapTest is Test {
         golSwap.addLiquidity{value: 0.005 ether}(5 ether);
 
         uint256 previousTotalLiquidity = golSwap.getTotalLiquidity();
-        uint previousLiquidityProvided = golSwap.getProvidedLiquidityByUser(LIQUIDITY_ADDER);
+        uint256 previousLiquidityProvided = golSwap.getProvidedLiquidityByUser(LIQUIDITY_ADDER);
 
         vm.prank(LIQUIDITY_ADDER);
         golSwap.removeLiquidity(5 ether);
@@ -222,14 +222,8 @@ contract GolSwapTest is Test {
 
     function testUnsupportedTokenType() public {
         vm.expectRevert(GolSwap.GolSwap__UnsupportedTokenType.selector);
-        (bool success, ) = address(golSwap).call(
-            abi.encodeWithSignature(
-                "quoteLiquidity(uint256,uint256,uint256,uint256)",
-                100,
-                2,
-                1 ether,
-                1000
-            )
+        (bool success,) = address(golSwap).call(
+            abi.encodeWithSignature("quoteLiquidity(uint256,uint256,uint256,uint256)", 100, 2, 1 ether, 1000)
         );
 
         assertFalse(success);

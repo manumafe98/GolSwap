@@ -1,1 +1,14 @@
 @import "tailwindcss";
+
+@theme {
+    --main-font: "Inter Variable", sans-serif;
+    --color-accent: #fb4e94;
+    --color-background-gradiant-start: #121313;
+    --color-background-gradiant-via: #0f0f0f;
+    --color-background-gradiant-end: #0a0a0a;
+    --color-neutral: #ffffffa6;
+}
+
+body {
+    font-family: var(--main-font);
+}

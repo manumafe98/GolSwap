@@ -1,0 +1,17 @@
+{
+  "name": "golswap",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "forge:test": "cd contracts && forge test",
+    "forge:format": "cd contracts && forge fmt",
+    "forge:coverage": "cd contracts && forge coverage",
+    "frontend:dev": "cd frontend && npm run dev",
+    "frontend:biome:check": "cd frontend && npm run biome:check",
+    "frontend:biome:fix": "cd frontend && npm run biome:fix"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
