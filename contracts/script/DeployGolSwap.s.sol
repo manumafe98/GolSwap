@@ -4,20 +4,18 @@ pragma solidity ^0.8.30;
 import {Script} from "forge-std/Script.sol";
 import {GolSwap} from "../src/GolSwap.sol";
 import {Gol} from "../src/Gol.sol";
-import {DeployGol} from "../script/DeployGol.s.sol";
 
 contract DeployGolSwap is Script {
-    DeployGol golDeployer;
+    string private constant NAME = "GOL";
+    string private constant SYMBOL = "GOL";
 
     function run() public returns (GolSwap, Gol) {
-        golDeployer = new DeployGol();
-        Gol golToken = golDeployer.run();
-
         vm.startBroadcast(msg.sender);
 
-        GolSwap golSwap = new GolSwap(address(golToken));
+        Gol gol = new Gol(NAME, SYMBOL);
+        GolSwap golSwap = new GolSwap(address(gol));
 
         vm.stopBroadcast();
-        return (golSwap, golToken);
+        return (golSwap, gol);
     }
 }

@@ -71,6 +71,12 @@ contract GolSwapTest is Test {
         golSwap.init{value: 0.01 ether}(10 ether);
     }
 
+    function testEthToGolWithoutInitializingThePool() public {
+        vm.prank(USER);
+        vm.expectRevert(GolSwap.GolSwap__LiquidityPoolNotInitialized.selector);
+        golSwap.ethToGol{value: 0.009 ether}();
+    }
+
     function testEthToGol() public initLiquidityPool {
         uint256 previousEthBalance = USER.balance;
         uint256 previousGolBalance = golToken.balanceOf(USER);
@@ -227,6 +233,24 @@ contract GolSwapTest is Test {
         );
 
         assertFalse(success);
+    }
+
+    function testQuoteLiquidity() public initLiquidityPool {
+        (uint256 ethReserves, uint256 golReserves) = golSwap.getReserves();
+        uint256 tokenAmount = 0.01 ether;
+        uint256 expectedResult = tokenAmount * golReserves / ethReserves;
+
+        uint256 result = golSwap.quoteLiquidity(tokenAmount, GolSwap.TokenType.ETH, ethReserves, golReserves);
+
+        assertEq(result, expectedResult);
+    }
+
+    function testQuoteLiquidityWithoutInitializingThePool() public {
+        (uint256 ethReserves, uint256 golReserves) = golSwap.getReserves();
+        uint256 tokenAmount = 0.01 ether;
+
+        vm.expectRevert(GolSwap.GolSwap__LiquidityPoolNotInitialized.selector);
+        golSwap.quoteLiquidity(tokenAmount, GolSwap.TokenType.ETH, ethReserves, golReserves);
     }
 
     function approveTokenAmount(address _user, uint256 _golTokenAmount) private {

@@ -3,6 +3,11 @@ pragma solidity ^0.8.30;
 
 import {Gol} from "./Gol.sol";
 
+/**
+ * @title Gol Swap DEX
+ * @author Manuel Maxera
+ * @notice It's a minimalistic DEX to swap GOL for ETH and provide liquidity GOL-ETH
+ */
 contract GolSwap {
     error GolSwap__PoolAlreadyInitialized();
     error GolSwap__TransferFailed();
@@ -23,6 +28,11 @@ contract GolSwap {
     Gol private immutable i_gol;
     address private immutable i_owner;
     uint256 private s_totalLiquidity;
+
+    uint256 private constant MINIMUM_ETHER = 0.01 ether;
+    uint256 private constant MINIMUM_GOL = 10 ether;
+    uint256 private constant PERCENTAGE_WITH_FEE = 997;
+    uint256 private constant PERCENTAGE_WITHOUT_FEE = 1000;
 
     mapping(address => uint256) private liquidity;
 
@@ -49,12 +59,17 @@ contract GolSwap {
         i_owner = msg.sender;
     }
 
+    /**
+     * @notice Initializes the GOL-ETH liquidity pool.
+     * @dev Can only be called once; sets initial liquidity based on ETH and GOL amounts provided.
+     * @param _golAmount The amount of GOL tokens to add to the pool.
+     */
     function init(uint256 _golAmount) external payable {
         if (s_totalLiquidity > 0) {
             revert GolSwap__PoolAlreadyInitialized();
         }
 
-        if (msg.value < 0.01 ether || _golAmount < 10e18) {
+        if (msg.value < MINIMUM_ETHER || _golAmount < MINIMUM_GOL) {
             revert GolSwap__InvalidRatio();
         }
 
@@ -68,9 +83,12 @@ contract GolSwap {
         }
     }
 
+    /**
+     * @notice Swaps ETH sent with the transaction for GOL tokens.
+     * @dev Uses the constant product formula to calculate the amount of GOL to send.
+     */
     function ethToGol() external payable invalidSwapValue(msg.value) {
-        (uint256 ethReserve, uint256 golReserve) = getReserves();
-        uint256 golToSend = calculatePrice(msg.value, ethReserve - msg.value, golReserve);
+        uint256 golToSend = _calculateSwapOutput(msg.value, TokenType.ETH);
 
         bool success = i_gol.transfer(msg.sender, golToSend);
         if (!success) {
@@ -80,9 +98,13 @@ contract GolSwap {
         emit Swap(msg.sender, msg.value, golToSend, true);
     }
 
+    /**
+     * @notice Swaps GOL tokens for ETH.
+     * @dev Uses the constant product formula to calculate the amount of ETH to send.
+     * @param _golAmount The amount of GOL tokens to swap.
+     */
     function golToEth(uint256 _golAmount) external invalidSwapValue(_golAmount) {
-        (uint256 ethReserve, uint256 golReserve) = getReserves();
-        uint256 ethToSend = calculatePrice(_golAmount, golReserve - _golAmount, ethReserve);
+        uint256 ethToSend = _calculateSwapOutput(_golAmount, TokenType.GOL);
 
         bool golSent = i_gol.transferFrom(msg.sender, address(this), _golAmount);
         if (!golSent) {
@@ -97,20 +119,13 @@ contract GolSwap {
         emit Swap(msg.sender, _golAmount, ethToSend, false);
     }
 
-    function getOwner() external view returns (address) {
-        return i_owner;
-    }
-
-    function getTotalLiquidity() external view returns (uint256) {
-        return s_totalLiquidity;
-    }
-
-    function getProvidedLiquidityByUser(address _address) external view returns (uint256) {
-        return liquidity[_address];
-    }
-
+    /**
+     * @notice Adds ETH and GOL tokens to the liquidity pool.
+     * @dev Requires the correct GOL-ETH ratio based on existing reserves.
+     * @param _golAmount The amount of GOL tokens to provide for liquidity.
+     */
     function addLiquidity(uint256 _golAmount) external payable liquidityPoolNotInitialized {
-        (uint256 ethReserve, uint256 golReserve) = getReserves();
+        (uint256 ethReserve, uint256 golReserve) = _getReserves();
         ethReserve -= msg.value;
 
         uint256 minimumEthAccepted = quoteLiquidity(_golAmount, TokenType.GOL, ethReserve, golReserve);
@@ -135,8 +150,13 @@ contract GolSwap {
         emit LiquidityAdded(msg.sender, msg.value, _golAmount);
     }
 
+    /**
+     * @notice Removes liquidity from the pool and returns ETH and GOL to the user.
+     * @dev Calculates the proportionate share of the reserves based on liquidity tokens.
+     * @param _amount The amount of GOL tokens the user wishes to redeem.
+     */
     function removeLiquidity(uint256 _amount) external liquidityPoolNotInitialized {
-        (uint256 ethReserve, uint256 golReserve) = getReserves();
+        (uint256 ethReserve, uint256 golReserve) = _getReserves();
         uint256 ethProvided = quoteLiquidity(_amount, TokenType.GOL, ethReserve, golReserve);
 
         if (liquidity[msg.sender] < ethProvided) {
@@ -159,25 +179,11 @@ contract GolSwap {
         emit LiquidityRemoved(msg.sender, _amount);
     }
 
-    function quoteLiquidity(uint256 _tokenAmount, TokenType _tokenType, uint256 ethReserve, uint256 golReserve)
-        public
-        pure
-        returns (uint256)
-    {
-        if (_tokenAmount == 0) {
-            revert GolSwap__InvalidLiquidityAmount();
-        }
-
-        if (_tokenType == TokenType.ETH) {
-            return (_tokenAmount * golReserve) / ethReserve;
-        } else if (_tokenType == TokenType.GOL) {
-            return (_tokenAmount * ethReserve) / golReserve;
-        } else {
-            revert GolSwap__UnsupportedTokenType();
-        }
-    }
-
-    function getReserves() public view returns (uint256, uint256) {
+    /**
+     * @notice Returns the current ETH and GOL reserves of the pool.
+     * @return A tuple containing ETH reserve and GOL reserve respectively.
+     */
+    function _getReserves() private view returns (uint256, uint256) {
         uint256 ethReserve = address(this).balance;
         uint256 golReserve = i_gol.balanceOf(address(this));
 
@@ -212,14 +218,92 @@ contract GolSwap {
      * @param _outputReserve The current reserve of the output token in the pool.
      * @return The amount of output tokens the user will receive after applying the swap fee.
      */
-    function calculatePrice(uint256 _inputAmount, uint256 _inputReserve, uint256 _outputReserve)
+    function _calculatePrice(uint256 _inputAmount, uint256 _inputReserve, uint256 _outputReserve)
         private
         pure
         returns (uint256)
     {
-        uint256 inputAmountWithFee = _inputAmount * 997;
+        uint256 inputAmountWithFee = _inputAmount * PERCENTAGE_WITH_FEE;
         uint256 numerator = inputAmountWithFee * _outputReserve;
-        uint256 denominator = (_inputReserve * 1000) + inputAmountWithFee;
+        uint256 denominator = (_inputReserve * PERCENTAGE_WITHOUT_FEE) + inputAmountWithFee;
         return numerator / denominator;
+    }
+
+    function _calculateSwapOutput(uint256 _swapAmount, TokenType _tokenToSwap)
+        private
+        view
+        liquidityPoolNotInitialized
+        returns (uint256)
+    {
+        (uint256 ethReserve, uint256 golReserve) = _getReserves();
+
+        if (_tokenToSwap == TokenType.ETH) {
+            return _calculatePrice(_swapAmount, ethReserve - _swapAmount, golReserve);
+        } else if (_tokenToSwap == TokenType.GOL) {
+            return _calculatePrice(_swapAmount, golReserve - _swapAmount, ethReserve);
+        } else {
+            revert GolSwap__UnsupportedTokenType();
+        }
+    }
+
+    /**
+     * @notice Returns the address of the contract owner.
+     * @return The owner's address.
+     */
+    function getOwner() external view returns (address) {
+        return i_owner;
+    }
+
+    /**
+     * @notice Returns the total liquidity in the pool.
+     * @return The total liquidity (in ETH).
+     */
+    function getTotalLiquidity() external view returns (uint256) {
+        return s_totalLiquidity;
+    }
+
+    /**
+     * @notice Returns the liquidity provided by a specific user.
+     * @param _address The address of the user.
+     * @return The amount of liquidity provided by the user.
+     */
+    function getProvidedLiquidityByUser(address _address) external view returns (uint256) {
+        return liquidity[_address];
+    }
+
+    /**
+     * @notice Adds a way to call get reserves externally
+     * @return A tuple containing ETH reserve and GOL reserve respectively.
+     */
+    function getReserves() external view returns (uint256, uint256) {
+        return _getReserves();
+    }
+
+    /**
+     * @notice Calculates the amount of token B required when providing liquidity with token A.
+     * @dev Useful for maintaining the correct ratio when adding liquidity.
+     * @param _tokenAmount The amount of one token (ETH or GOL).
+     * @param _tokenType The type of token provided (ETH or GOL).
+     * @param ethReserve The current ETH reserve in the pool.
+     * @param golReserve The current GOL reserve in the pool.
+     * @return The required amount of the other token to maintain the pool ratio.
+     */
+    function quoteLiquidity(uint256 _tokenAmount, TokenType _tokenType, uint256 ethReserve, uint256 golReserve)
+        public
+        view
+        liquidityPoolNotInitialized
+        returns (uint256)
+    {
+        if (_tokenAmount == 0) {
+            revert GolSwap__InvalidLiquidityAmount();
+        }
+
+        if (_tokenType == TokenType.ETH) {
+            return (_tokenAmount * golReserve) / ethReserve;
+        } else if (_tokenType == TokenType.GOL) {
+            return (_tokenAmount * ethReserve) / golReserve;
+        } else {
+            revert GolSwap__UnsupportedTokenType();
+        }
     }
 }

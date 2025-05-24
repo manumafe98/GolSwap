@@ -1,16 +1,16 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.29;
+pragma solidity ^0.8.30;
 
 import {Test} from "forge-std/Test.sol";
 import {Gol} from "../src/Gol.sol";
-import {DeployGol} from "../script/DeployGol.s.sol";
+import {DeployGolSwap} from "../script/DeployGolSwap.s.sol";
 
 contract GolTest is Test {
     Gol public gol;
 
     function setUp() external {
-        DeployGol deployer = new DeployGol();
-        gol = deployer.run();
+        DeployGolSwap deployer = new DeployGolSwap();
+        (, gol) = deployer.run();
     }
 
     function testNameAndSymbol() public view {
